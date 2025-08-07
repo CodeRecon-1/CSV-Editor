@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CSV Editor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://unpkg.com/tabulator-tables@5.6.1/dist/css/tabulator.min.css" rel="stylesheet">
+  <style>
+    .resizable-container {
+      display: flex;
+      width: 100%;
+    }
+    .resizable-left, .resizable-right {
+      overflow: auto;
+      padding: 1rem;
+      background-color: #f9fafb;
+      max-height: 600px;
+      border: 1px solid #ddd;
+      flex-grow: 0;
+    }
+    .resizable-left {
+      width: 60%;
+    }
+    .resizable-right {
+      width: 40%;
+    }
+    .resizer {
+      width: 5px;
+      cursor: col-resize;
+      background-color: #ccc;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 p-6">
+  <div class="max-w-7xl mx-auto bg-white shadow-md p-6 rounded">
+    <h1 class="text-2xl font-bold mb-4">CSV Viewer & Editor</h1>
+    <form method="POST" enctype="multipart/form-data" class="mb-6">
+      <input type="file" name="file" accept=".csv" required class="mb-4">
+      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Upload</button>
+    </form>
+
+    {% if data %}
+      <div class="mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+  <!-- Left: Filter input -->
+  <div class="flex items-center gap-2">
+    <label class="font-medium">Filter:</label>
+    <input type="text" id="filter-input" placeholder="e.g. Age > 25" class="border px-2 py-1 rounded w-60" />
+    <button id="apply-filter" class="bg-gray-300 hover:bg-gray-400 text-sm px-3 py-1 rounded">Apply</button>
+    <button id="clear-filter" class="text-red-500 text-sm px-2">Clear</button>
+  </div>
+
+  <!-- Right: Action buttons -->
+  <div class="flex items-center gap-2">
+    <button id="add-row" class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm">Add Row</button>
+    <button id="remove-row" class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-sm">Remove Row</button>
+    <button id="add-column" class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm">Add Column</button>
+    <button id="remove-column" class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-sm">Remove Column</button>
+
+  </div>
+</div>
+
+        <button id="download-csv" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Download CSV</button>
+      </div>
+
+      {% if describe %}
+        <div class="resizable-container mt-4">
+          <div class="resizable-left">
+            <h2 class="text-xl font-semibold mb-2">Editable CSV Table</h2>
+            <div id="csv-table"></div>
+          </div>
+          <div class="resizer" id="dragbar"></div>
+          <div class="resizable-right">
+            <h2 class="text-xl font-semibold mb-2">Numerical Summary</h2>
+            {{ describe | safe }}
+          </div>
+        </div>
+      {% else %}
+        <div class="flex justify-center">
+          <div class="overflow-auto max-h-[600px] border rounded p-4 bg-gray-50 w-full md:w-2/3">
+            <h2 class="text-xl font-semibold mb-2">Editable CSV Table</h2>
+            <div id="csv-table"></div>
+          </div>
+        </div>
+      {% endif %}
+    {% endif %}
+
+    {% if error %}
+      <p class="text-red-600">{{ error }}</p>
+    {% endif %}
+
+  </div>
+
+  <!-- Tabulator -->
+  <script src="https://unpkg.com/tabulator-tables@5.6.1/dist/js/tabulator.min.js"></script>
+  <script>
+    {% if data %}
+      const table = new Tabulator("#csv-table", {
+        data: {{ data | tojson }},
+        columns: {{ columns | tojson }},
+        layout: "fitDataStretch",
+        movableColumns: true,
+        resizableColumns: true,
+        autoColumns: false,
+      });
+
+      document.getElementById("download-csv").addEventListener("click", () => {
+        const filename = prompt("Save as:");
+        if (!filename) return;
+
+        table.download("csv", filename);
+      });
+    {% endif %}
+  </script>
+
+  <!-- Resizer Script -->
+  <script>
+
+    // document.getElementById('csvUpload').addEventListener('change', async function () {
+//     const formData = new FormData();
+//     formData.append("file", this.files[0]);
+
+//     const res = await fetch('/upload-json', {
+//         method: 'POST',
+//         body: formData
+//     });
+
+//     const { data, columns } = await res.json();
+
+//     // Destroy old table if it exists
+//     if (window.tabulator) window.tabulator.destroy();
+
+//     window.tabulator = new Tabulator("#table", {
+//         data,
+//         columns,
+//         layout: "fitColumns",
+//         height: "500px",
+//         reactiveData: true
+//     });
+// });
+
+
+
+
+    const dragbar = document.getElementById("dragbar");
+    const left = dragbar?.previousElementSibling;
+    const right = dragbar?.nextElementSibling;
+    let isDragging = false;
+
+    if (dragbar && left && right) {
+      dragbar.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        isDragging = true;
+        document.body.style.cursor = "col-resize";
+      });
+
+      document.addEventListener("mousemove", function (e) {
+        if (!isDragging) return;
+
+        const container = left.parentNode;
+        const containerOffsetLeft = container.offsetLeft;
+        const containerWidth = container.offsetWidth;
+        const pointerX = e.clientX - containerOffsetLeft;
+
+        const minPercent = 10;
+        const maxPercent = 90;
+        const leftPercent = (pointerX / containerWidth) * 100;
+        const rightPercent = 100 - leftPercent;
+
+        if (leftPercent > minPercent && rightPercent > minPercent) {
+          left.style.width = `${leftPercent}%`;
+          right.style.width = `${rightPercent}%`;
+        }
+      });
+
+      document.addEventListener("mouseup", function () {
+        isDragging = false;
+        document.body.style.cursor = "default";
+      });
+    }
+
+    // Filter logic
+document.getElementById("apply-filter").addEventListener("click", () => {
+  const input = document.getElementById("filter-input").value.trim();
+  if (!input) return table.clearFilter();
+
+  // Try to parse: e.g., Age > 25
+  const match = input.match(/^(\w+)\s*(=|>|<|>=|<=|!=)\s*(.+)$/);
+  if (match) {
+    const [, field, op, valueRaw] = match;
+    const value = isNaN(valueRaw) ? valueRaw.replace(/['"]/g, '') : Number(valueRaw);
+
+    table.setFilter(field, op, value);
+  } else {
+    alert("Invalid filter format. Try: Age > 25 or Name = Alice");
+  }
+});
+
+document.getElementById("clear-filter").addEventListener("click", () => {
+  document.getElementById("filter-input").value = "";
+  table.clearFilter();
+});
+
+// Add row
+document.getElementById("add-row").addEventListener("click", () => {
+  const emptyRow = {};
+  table.getColumns().forEach(col => {
+    emptyRow[col.getField()] = "";
+  });
+  table.addRow(emptyRow);
+});
+
+// Remove selected row
+document.getElementById("remove-row").addEventListener("click", () => {
+  const selectedRows = table.getSelectedRows();
+  if (selectedRows.length === 0) {
+    alert("Select a row to delete.");
+  } else {
+    selectedRows.forEach(row => row.delete());
+  }
+});
+
+// Add column
+document.getElementById("add-column").addEventListener("click", () => {
+  const colName = prompt("Enter new column name:");
+  if (!colName) return;
+
+  // Add to all rows
+  table.getData().forEach(row => {
+    row[colName] = "";
+  });
+
+  table.setColumns([
+    ...table.getColumns().map(col => ({ title: col.getField(), field: col.getField(), editor: "input" })),
+    { title: colName, field: colName, editor: "input" }
+  ]);
+
+  table.setData(table.getData()); // Refresh data
+});
+
+// Remove column
+document.getElementById("remove-column").addEventListener("click", () => {
+  const colName = prompt("Enter column name to remove:");
+  if (!colName) return;
+
+  const columns = table.getColumns().map(col => col.getField());
+  if (!columns.includes(colName)) {
+    alert("Column not found.");
+    return;
+  }
+
+  const newCols = columns.filter(c => c !== colName).map(c => ({
+    title: c,
+    field: c,
+    editor: "input"
+  }));
+
+  // Remove key from data
+  const newData = table.getData().map(row => {
+    const copy = { ...row };
+    delete copy[colName];
+    return copy;
+  });
+
+  table.setColumns(newCols);
+  table.setData(newData);
+});
+
+  </script>
+</body>
+</html>
